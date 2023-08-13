@@ -38,6 +38,8 @@ typedef struct	segment
 	int		index;
 	int		posX;
 	int		posY;
+	int		dirX;
+	int		dirY;
 	struct	segment	*prev;
 	struct	segment	*next;
 } Segment;
@@ -55,9 +57,10 @@ typedef struct	fruit
 	int		posY;
 } Fruit;
 
+int		isOccupied(Snake *snake, int posX, int posY);
 Snake	*createSnake(int posX, int posY);
 void	addSegment(Snake *snake, int posX, int posY);
-void	moveSnake(Snake *snake, int dx, int dy, int *grow);
+void	moveSnake(Snake *snake, int dirX, int dirY, int *grow);
 void	renderSnake(Snake *snake, int frame);
 void	freeSnake(Snake *snake);
 Fruit	*spawnFruit(int maxWidth, int maxHeight);
@@ -84,8 +87,8 @@ int		main(int argc, char **argv)
 	int		tick;
 	int		grow;
 	int		i;
-	int		dx;
-	int		dy;
+	int		dirX;
+	int		dirY;
 	char	**temp;
 	Segment	*currentSegm;
 	Snake	*snake;
@@ -98,8 +101,8 @@ int		main(int argc, char **argv)
 	speed = DEFAULT_SPEED;
 	i = 0;
 	score = 0;
-	dx = 0;
-	dy = 0;
+	dirX = 0;
+	dirY = 0;
 	frameTime = 0;
 
 	currentSegm = NULL;
@@ -130,7 +133,6 @@ int		main(int argc, char **argv)
 
 		gettimeofday(&frameStart, NULL);
 
-
 		key = getch();
 
 		//Game Logic
@@ -138,7 +140,7 @@ int		main(int argc, char **argv)
 		if (key != ERR)
 		{			
 			if (key == KEY_END)
-				break;
+				running = 0;
 			if (key == 'm')
 			{
 				free(backgroundBuffer);
@@ -148,25 +150,25 @@ int		main(int argc, char **argv)
 
 		}
 
-		if (key == KEY_UP && dy <= 0)
+		if (key == KEY_UP && !isOccupied(snake, snake->head->posX, snake->head->posY - 1))
 		{
-			dx = 0;
-			dy = -1;
+			dirX = 0;
+			dirY = -1;
 		}
-		if (key == KEY_DOWN && dy >= 0)
+		else if (key == KEY_DOWN && !isOccupied(snake, snake->head->posX, snake->head->posY + 1))
 		{
-			dx = 0;
-			dy = 1;
+			dirX = 0;
+			dirY = 1;
 		}
-		if (key == KEY_LEFT && dx <= 0)
+		else if (key == KEY_LEFT && !isOccupied(snake, snake->head->posX - 2, snake->head->posY))
 		{
-			dy = 0;
-			dx = -2;
+			dirX = -2;
+			dirY = 0;
 		}
-		if (key == KEY_RIGHT && dx >= 0)
+		else if (key == KEY_RIGHT && !isOccupied(snake, snake->head->posX + 2, snake->head->posY))
 		{
-			dy = 0;
-			dx = 2;
+			dirX = 2;
+			dirY = 0;
 		}
 		/*********************************************************/
 		
@@ -207,8 +209,12 @@ int		main(int argc, char **argv)
 		i = 0;
 
 		if (tick % (UPS / (int)speed) == 0)
-			moveSnake(snake, dx, dy, &grow);
-
+		{
+			moveSnake(snake, dirX, dirY, &grow);
+			if (dirX || dirY)
+				if (isOccupied(snake, snake->head->posX, snake->head->posY))
+					running = 0;
+		}
 
 		//Render Everything in the buffer
 
@@ -250,6 +256,25 @@ int		main(int argc, char **argv)
 
 	endwin();
 
+	printf("Game Over !\nScore : %d\n", score);
+
+	return (0);
+}
+
+int		isOccupied(Snake *snake, int posX, int posY)
+{
+	int		i;
+	Segment	*current;
+
+	i = 0;
+	current = snake->head->next;
+	while (current->next) // - 1
+	{
+		if ((current->posX == posX) && (current->posY == posY))
+			return (1);
+		current = current->next;
+		i++;
+	}
 	return (0);
 }
 
@@ -270,6 +295,8 @@ Snake	*createSnake(int posX, int posY)
 	snake->head->index = 0;
 	snake->head->posX = posX;
 	snake->head->posY = posY;
+	snake->head->dirX = 0;
+	snake->head->dirY = 0;
 
 	snake->head->prev = NULL;
 	snake->tail->next = NULL;
@@ -288,6 +315,8 @@ void	addSegment(Snake *snake, int posX, int posY)
 	newSegm->index = snake->tail->index + 1;
 	newSegm->posX = posX;
 	newSegm->posY = posY;
+	newSegm->dirX = snake->tail->dirX;
+	newSegm->dirY = snake->tail->dirY;
 	newSegm->prev = snake->tail;
 	newSegm->next = NULL;
 	snake->tail->next = newSegm;
@@ -295,7 +324,7 @@ void	addSegment(Snake *snake, int posX, int posY)
 	snake->length++;
 }
 
-void	moveSnake(Snake *snake, int dx, int dy, int *grow)
+void	moveSnake(Snake *snake, int dirX, int dirY, int *grow)
 {
 	int	i;
 	Segment	*current;
@@ -313,11 +342,15 @@ void	moveSnake(Snake *snake, int dx, int dy, int *grow)
 		{
 			current->posX = current->prev->posX;
 			current->posY = current->prev->posY;
+			current->dirX = current->prev->dirX;
+			current->dirY = current->prev->dirY;
 		}
 		else
 		{
-			current->posX += dx;
-			current->posY += dy;
+			current->posX += dirX;
+			current->posY += dirY;
+			current->dirX = dirX;
+			current->dirY = dirY;
 		}
 		if (current->posX > BUFFER_WIDTH - 2)
 			current->posX = 2;
@@ -343,12 +376,17 @@ void	renderSnake(Snake *snake, int frame)
 	while (i < snake->length)
 	{
 		if (current == snake->head)
-			inactiveBuffer[current->posY][current->posX] = 'O';
+			inactiveBuffer[current->posY][current->posX] = '0';
 		else if (current == snake->tail)
-			inactiveBuffer[current->posY][current->posX] = ':';
-		else
 			inactiveBuffer[current->posY][current->posX] = 'o';
-		//'0' + snake->length - current->index
+		else if (current->index % 4 == 0)
+			inactiveBuffer[current->posY][current->posX] = 'x';
+		else if (current->index % 4 == 2)
+			inactiveBuffer[current->posY][current->posX] = '+';
+		else if (current->dirX != 0)
+			inactiveBuffer[current->posY][current->posX] = '~';
+		else if (current->dirY != 0)
+			inactiveBuffer[current->posY][current->posX] = ':';
 		current = current->next;
 		i++;
 	}
@@ -383,8 +421,8 @@ Fruit	*spawnFruit(int maxWidth, int maxHeight)
 
 void	renderFruit(Fruit *fruit, int frame)
 {
-	char	test[50] = "<<<^^^>>>vvv";
-	inactiveBuffer[fruit->posY][fruit->posX] = test[frame % 12];
+	char	test[60] = "<<<<<<{{{{{{[[[[[[((((||||||))))))]]]]]]}}}}}}>>>>>>------"; //"<<<^^^>>>vvv"; 12
+	inactiveBuffer[fruit->posY][fruit->posX] = test[frame];
 }
 
 void	displayScreen(char **activeBuffer)
